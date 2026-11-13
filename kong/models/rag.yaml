@@ -1,0 +1,26 @@
+# EA - Claude + RAG -> POST https://ea-aigw.kong-sales-engineering.com/rag/v1/messages
+_defaults:
+  kongctl:
+    namespace: ea-automation
+
+ai_gateway_models:
+- ref: ea-claude-rag
+  ai_gateway: ea-gw
+  name: ea-claude-rag
+  display_name: "EA - Claude Haiku + RAG injector"
+  type: model
+  enabled: true
+  formats: [{type: anthropic}]
+  capabilities: ['*']
+  labels: {owner: ea-poc, purpose: rag}
+  access: {auth_strategies: [key-auth]}
+  policies: [ea-rag]
+  config:
+    route: {paths: [/rag], protocols: [http, https], strip_path: true}
+    model: {name_header: true}
+    logging: {payloads: false}
+  targets:
+  - name: claude-haiku-4-5-20251001
+    provider: kong-se-anthropic
+    weight: 100
+    config: {type: anthropic, version: "2023-06-01", input_cost: 1, output_cost: 5, cache_read_cost: 0.1, cache_write_cost: 1.25}

@@ -1,0 +1,23 @@
+# Custom policy (streaming mode): Konnect ships the Lua to the data planes, no custom image. Attached to one model (/custom).
+_defaults:
+  kongctl:
+    namespace: ea-automation
+
+ai_gateway_custom_policies:
+- ref: ea-stamp
+  ai_gateway: ea-gw
+  name: ea-stamp
+  type: streaming
+  display_name: "EA custom policy: response stamp"
+  schema: !file lua/ea-stamp.schema.lua
+  handler: !file lua/ea-stamp.handler.lua
+
+ai_gateway_policies:
+- ref: ea-stamp-policy
+  ai_gateway: ea-gw
+  name: ea-stamp-policy
+  display_name: "EA stamp (custom policy instance)"
+  type: ea-stamp
+  enabled: true
+  global: false
+  config: {header_name: X-EA-Policy, header_value: stamped-by-ea-gateway}

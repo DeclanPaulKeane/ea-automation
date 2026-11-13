@@ -1,0 +1,47 @@
+# MCP passthrough: GitHub and Jira (Atlassian) remote MCP servers fronted by the gateway.
+# Kong authenticates the caller with its own key (x-ea-key); the caller's Authorization header (their GitHub / Atlassian token)
+# is forwarded to the upstream untouched. The gateway stores no upstream credentials.
+_defaults:
+  kongctl:
+    namespace: ea-automation
+
+ai_gateway_auth_strategies:
+- ref: ea-mcp-key
+  ai_gateway: ea-gw
+  name: ea-mcp-key
+  display_name: "EA MCP gateway key (x-ea-key)"
+  type: key-auth
+  config:
+    key_names: [x-ea-key]
+    key_in_header: true
+    key_in_query: false
+    hide_credentials: true
+    identity_realms: []
+    principals: {directory: default, enabled: true, error_on_miss: true}
+    run_on_preflight: true
+
+ai_gateway_mcp_servers:
+- ref: mcp-github
+  ai_gateway: ea-gw
+  name: mcp-github
+  display_name: "MCP: GitHub (passthrough)"
+  type: passthrough-listener
+  enabled: true
+  access: {acl_attribute_type: consumer, auth_strategies: [ea-mcp-key]}
+  config:
+    url: https://api.githubcopilot.com/mcp/
+    route: {paths: [/mcp/github], methods: [POST], protocols: [http, https], strip_path: true}
+    logging: {payloads: false, audits: true}
+    server: {timeout: 60000, forward_client_headers: true}
+- ref: mcp-jira
+  ai_gateway: ea-gw
+  name: mcp-jira
+  display_name: "MCP: Jira / Atlassian (passthrough)"
+  type: passthrough-listener
+  enabled: true
+  access: {acl_attribute_type: consumer, auth_strategies: [ea-mcp-key]}
+  config:
+    url: https://mcp.atlassian.com/v1/mcp
+    route: {paths: [/mcp/jira], methods: [POST], protocols: [http, https], strip_path: true}
+    logging: {payloads: false, audits: true}
+    server: {timeout: 60000, forward_client_headers: true}

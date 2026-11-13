@@ -1,0 +1,11 @@
+# Parent entity: the ONE gateway this repo manages. Already exists in Konnect (adopted into namespace ea-automation).
+# Apply mode only: nothing here ever deletes the pre-existing models/strategies/consumers.
+_defaults:
+  kongctl:
+    namespace: ea-automation
+
+ai_gateways:
+- ref: ea-gw
+  name: kong-team-example-gateway
+  display_name: kong-team-example-gateway
+  min_runtime_version: "2.3"

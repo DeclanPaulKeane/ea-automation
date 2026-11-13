@@ -1,0 +1,30 @@
+# Two A2A agents behind the gateway: triage-agent -> release-agent (agent-to-agent through Kong), each also calls a model through Kong.
+_defaults:
+  kongctl:
+    namespace: ea-automation
+
+ai_gateway_agents:
+- ref: agent-triage
+  ai_gateway: ea-gw
+  name: triage-agent
+  display_name: "A2A: EA triage agent (model -> release-agent -> model)"
+  type: a2a
+  enabled: true
+  access: {auth_strategies: [key-auth]}
+  policies: []
+  config:
+    url: http://triage-agent.ea-aigw.svc.cluster.local
+    route: {paths: [/a2a/triage], strip_path: true}
+    logging: {payloads: false}
+- ref: agent-release
+  ai_gateway: ea-gw
+  name: release-agent
+  display_name: "A2A: EA release agent (model -> model)"
+  type: a2a
+  enabled: true
+  access: {auth_strategies: [key-auth]}
+  policies: []
+  config:
+    url: http://release-agent.ea-aigw.svc.cluster.local
+    route: {paths: [/a2a/release], strip_path: true}
+    logging: {payloads: false}

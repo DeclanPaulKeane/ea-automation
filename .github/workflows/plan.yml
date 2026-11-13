@@ -1,0 +1,30 @@
+name: Plan (pull request)
+on:
+  pull_request:
+    paths: ['kong/**']
+permissions: {contents: read, pull-requests: read}
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    env: &env
+      KONGCTL_DEFAULT_KONNECT_PAT: ${{ secrets.EA_PAT }}
+      OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+      AZURE_KEY: ${{ secrets.AZURE_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_ASSUME_ROLE_ARM: ${{ secrets.AWS_ASSUME_ROLE_ARM }}
+      REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: kong/setup-kongctl@v1
+      - name: Guard - only kong-team-example-gateway
+        run: |
+          grep -rh "^  name: kong-team-example-gateway" kong/00-gateway.yaml
+          [ "$(grep -rhc 'ai_gateways:' kong | paste -sd+ | bc)" = "1" ]
+      - name: Plan (apply mode: never deletes)
+        run: |
+          export OPENAI_BEARER="Bearer ${OPENAI_KEY}" REDIS_PASSWORD_CLEAN="${REDIS_PASSWORD}"
+          kongctl plan -f kong --recursive --mode apply --output-file plan.json
+          jq -r '"### kongctl plan\n\n| action | resource |\n|---|---|\n" + ([.changes[]? | "| \(.action) | \(.resource_type) `\(.resource_ref // .resource_name)` |"] | join("\n"))' plan.json >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        with: {name: plan, path: plan.json}

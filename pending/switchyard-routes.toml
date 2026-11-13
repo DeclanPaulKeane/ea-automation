@@ -1,0 +1,23 @@
+# Switchyard routes for the EA POC: a weighted random split between the two targets Kong has approved (fast / strong).
+# The decision service only names a target; Kong resolves it to its own AI Model entity and never accepts a URL from the response.
+schema_version = 1
+
+[llm_clients.gateway]
+format = "anthropic_messages"
+base_url = "http://aigw-dp.ea-aigw.svc.cluster.local/agents"
+api_key_env = "GATEWAY_KEY"
+
+[targets.fast]
+id = "claude-haiku-4-5-20251001"
+llm_client = "gateway"
+
+[targets.strong]
+id = "claude-sonnet-5-5"
+llm_client = "gateway"
+
+[routes.general]
+id = "switchyard/general"
+type = "random"
+targets = ["fast", "strong"]
+weights = [1, 1]
+seed = 7

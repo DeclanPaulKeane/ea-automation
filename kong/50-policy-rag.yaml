@@ -1,0 +1,33 @@
+# AI RAG Injector: retrieves chunks from the Redis index (collection ea-kb, loaded by scripts/ingest-kb.py) and injects them into the prompt.
+# Attached to one model only (ea-claude-rag at /rag), not global.
+_defaults:
+  kongctl:
+    namespace: ea-automation
+
+ai_gateway_policies:
+- ref: ea-rag
+  ai_gateway: ea-gw
+  name: ea-rag
+  display_name: "RAG: EA knowledge base (release policy, incident runbook, AI guidelines)"
+  type: ai-rag-injector
+  enabled: true
+  global: false
+  config:
+    fetch_chunks_count: 4
+    inject_as_role: user
+    inject_template: "Use the following EA internal knowledge base excerpts to answer. If they are not relevant, ignore them.\n<CONTEXT>\n\nQuestion: <PROMPT>"
+    stop_on_failure: false
+    embeddings:
+      auth:
+        header_name: Authorization
+        header_value: !env OPENAI_BEARER
+      model: {provider: openai, name: text-embedding-3-small}
+    vectordb:
+      strategy: redis
+      dimensions: 1536
+      distance_metric: cosine
+      threshold: 0.6
+      redis:
+        host: redis.ea-aigw.svc.cluster.local
+        port: 6379
+        password: !env REDIS_PASSWORD_CLEAN

@@ -1,0 +1,36 @@
+# Global observability policies: OTEL traces+logs -> collector, Prometheus AI metrics, correlation id.
+_defaults:
+  kongctl:
+    namespace: ea-automation
+
+ai_gateway_policies:
+- ref: ea-otel
+  ai_gateway: ea-gw
+  name: ea-otel
+  display_name: "OpenTelemetry (traces + Gen AI attributes), W3C propagation"
+  type: opentelemetry
+  enabled: true
+  global: true
+  config:
+    traces_endpoint: http://otel-collector.ea-observability.svc.cluster.local:4318/v1/traces
+    logs_endpoint: http://otel-collector.ea-observability.svc.cluster.local:4318/v1/logs
+    propagation: {default_format: w3c, inject: [w3c], extract: [w3c]}
+    resource_attributes: {service.name: ea-aigw, deployment.environment: ea-poc}
+    sampling_rate: 1
+    queue: {max_batch_size: 20, max_coalescing_delay: 1}
+- ref: ea-prometheus
+  ai_gateway: ea-gw
+  name: ea-prometheus
+  display_name: "Prometheus (AI metrics)"
+  type: prometheus
+  enabled: true
+  global: true
+  config: {ai_metrics: true, status_code_metrics: true, latency_metrics: true, bandwidth_metrics: true, upstream_health_metrics: true}
+- ref: ea-correlation-id
+  ai_gateway: ea-gw
+  name: ea-correlation-id
+  display_name: "Correlation ID (X-EA-Request-ID)"
+  type: correlation-id
+  enabled: true
+  global: true
+  config: {header_name: X-EA-Request-ID, generator: uuid, echo_downstream: true}

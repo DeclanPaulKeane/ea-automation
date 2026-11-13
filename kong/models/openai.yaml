@@ -1,0 +1,25 @@
+# EA - OpenAI GPT  ->  POST https://ea-aigw.kong-sales-engineering.com/openai/v1/messages
+_defaults:
+  kongctl:
+    namespace: ea-automation
+
+ai_gateway_models:
+- ref: ea-openai-gpt
+  ai_gateway: ea-gw
+  name: ea-openai-gpt
+  display_name: "EA - OpenAI GPT"
+  type: model
+  enabled: true
+  formats: [{type: anthropic}]
+  capabilities: ['*']
+  labels: {owner: ea-poc, purpose: openai}
+  access: {auth_strategies: [key-auth]}
+  config:
+    route: {paths: [/openai], protocols: [http, https], strip_path: true}
+    model: {name_header: true}
+    logging: {payloads: false}
+  targets:
+  - name: gpt-4o-mini
+    provider: ea-openai
+    weight: 100
+    config: {type: openai, input_cost: 0.15, output_cost: 0.6}

@@ -1,0 +1,28 @@
+name: Apply (merge to main)
+on:
+  push:
+    branches: [main]
+    paths: ['kong/**']
+  workflow_dispatch:
+concurrency: {group: ea-apply, cancel-in-progress: false}
+permissions: {contents: read}
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    env:
+      KONGCTL_DEFAULT_KONNECT_PAT: ${{ secrets.EA_PAT }}
+      OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+      AZURE_KEY: ${{ secrets.AZURE_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_ASSUME_ROLE_ARM: ${{ secrets.AWS_ASSUME_ROLE_ARM }}
+      REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: kong/setup-kongctl@v1
+      - name: Apply (apply mode: creates/updates, never deletes)
+        run: |
+          export OPENAI_BEARER="Bearer ${OPENAI_KEY}" REDIS_PASSWORD_CLEAN="${REDIS_PASSWORD}"
+          kongctl apply -f kong --recursive --mode apply --auto-approve
+      - name: Verify the gateway now lists the models
+        run: kongctl get ai-gateway models --gateway-id f59384d0-6d47-4cc9-8be8-b3275a680343 -o json | jq -r '.[].name'

@@ -1,0 +1,25 @@
+# EA - Bedrock Claude Sonnet  ->  POST https://ea-aigw.kong-sales-engineering.com/bedrock/v1/messages
+_defaults:
+  kongctl:
+    namespace: ea-automation
+
+ai_gateway_models:
+- ref: ea-bedrock-claude
+  ai_gateway: ea-gw
+  name: ea-bedrock-claude
+  display_name: "EA - Bedrock Claude Sonnet"
+  type: model
+  enabled: true
+  formats: [{type: anthropic}]
+  capabilities: ['*']
+  labels: {owner: ea-poc, purpose: bedrock}
+  access: {auth_strategies: [key-auth]}
+  config:
+    route: {paths: [/bedrock], protocols: [http, https], strip_path: true}
+    model: {name_header: true}
+    logging: {payloads: false}
+  targets:
+  - name: us.anthropic.claude-sonnet-5-5
+    provider: ea-bedrock
+    weight: 100
+    config: {type: bedrock, region: us-east-1, input_cost: 3, output_cost: 15}
