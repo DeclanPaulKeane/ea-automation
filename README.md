@@ -1,7 +1,7 @@
 # ea-automation
 
 GitOps for the EA AI Gateway POC. **Everything here manages one gateway only: `kong-team-example-gateway`** (Konnect, US).
-Config is [kongctl](https://github.com/Kong/kongctl) declarative YAML in namespace `ea-automation`; nothing here ever deletes (`--mode apply`).
+Config is [kongctl](https://github.com/Kong/kongctl) declarative YAML in namespace `ea-automation`; nothing here ever deletes (plans use `--mode apply`; `kongctl apply` never deletes what the files do not declare).
 
 ```
 kong/00-gateway.yaml       the gateway (already exists; adopted into the namespace)
@@ -12,7 +12,8 @@ kong/40-agents.yaml        triage-agent <-> release-agent (A2A)
 kong/50-policy-rag.yaml    RAG injector policy
 kong/60-custom-policy.yaml custom policy (ea-stamp) + Lua in kong/lua/
 kong/models/*.yaml         ONE FILE PER MODEL, each on its own path: POST https://ea-aigw.kong-sales-engineering.com/<path>/v1/messages
-pending/                   staged routing-provider (needs the Switchyard decision service)
+kong/70-routing-provider.yaml  AI Routing Provider (NVIDIA Switchyard) + entry model + two routing targets, all on /route
+deploy/                    Switchyard decision service manifest + routes (compiled in-cluster from crates.io; see docs)
 ```
 
 ## Add a model (the demo)
@@ -24,11 +25,28 @@ gh pr merge --squash         # the Apply workflow creates it on the gateway
 curl https://ea-aigw.kong-sales-engineering.com/sonnet/v1/messages -H "x-api-key: $KEY" -H 'content-type: application/json' \
   -d '{"model":"ea-claude-sonnet","max_tokens":50,"messages":[{"role":"user","content":"hello"}]}'
 ```
+## More examples (all `POST https://ea-aigw.kong-sales-engineering.com/<path>/v1/messages`, header `x-api-key: $KEY`)
+| Path | `model` | Shows |
+|---|---|---|
+| `/openai` `/azure` `/bedrock` | `ea-openai-gpt` `ea-azure-gpt4o` `ea-bedrock-claude` | one model per provider, Anthropic format in and out |
+| `/rag` | `ea-claude-rag` | RAG injector: ask "Which days can Game Platform releases ship?" |
+| `/custom` | `ea-claude-custom` | custom policy: response carries `X-EA-Policy: stamped-by-ea-gateway` |
+| `/route` | `ea-claude-route` | AI Routing Provider: `X-AI-Routing-Backend: fast\|strong` and `X-AI-Routing-Outcome: enforced`; strong is served by Sonnet on Bedrock, fast by Haiku |
+| `/a2a/triage` | (A2A JSON-RPC `message/send`) | triage-agent calls release-agent through the gateway |
+| `/mcp/github` `/mcp/jira` | (MCP, header `x-ea-key`) | passthrough; send your own GitHub / Atlassian token in `Authorization` |
+
+```bash
+# routing: run it a few times and watch the backend header flip between fast and strong
+for i in 1 2 3 4; do curl -si https://ea-aigw.kong-sales-engineering.com/route/v1/messages -H "x-api-key: $KEY" -H 'content-type: application/json' \
+  -d '{"model":"ea-claude-route","max_tokens":30,"messages":[{"role":"user","content":"Reply with one word: ok"}]}' | grep -i x-ai-routing; done
+```
+Flip the policy between `mode: observe_only` (decisions only, outcome `observed`) and `mode: enforce` in `kong/70-routing-provider.yaml`; the PR plan shows the one-line diff.
+
 Rules the gateway enforces: one **distinct path** per model (overlapping paths return 503), and the request body `model` must equal the model `name`.
 
 ## One-time setup
-`scripts/set-github-secrets.sh /path/to/secrets.yaml` (run it yourself) stores `EA_PAT`, `OPENAI_KEY`, `AZURE_KEY`, `AWS_*`, `REDIS_PASSWORD` as Actions secrets.
+`scripts/set-github-secrets.sh /path/to/secrets.yaml` (run it yourself; it sends credential values to GitHub) stores `EA_PAT`, `OPENAI_KEY`, `AZURE_KEY`, `AWS_*`, `REDIS_PASSWORD` as Actions secrets.
 
 ## Workflows
 - `plan.yml`: on pull requests touching `kong/**`, runs `kongctl plan --mode apply` and posts the changes to the job summary.
-- `apply.yml`: on merge to `main` (or manually), runs `kongctl apply --mode apply`, then lists the models.
+- `apply.yml`: on merge to `main` (or manually), runs `kongctl apply`, then lists the models.

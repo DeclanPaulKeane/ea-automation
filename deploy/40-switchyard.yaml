@@ -1,0 +1,37 @@
+# NVIDIA Switchyard decision service for the AI Routing Provider policy.
+# No prebuilt image is published, so the pod compiles switchyard-server from crates.io in an init container (first start ~10-15 min),
+# then runs it. Routes come from ConfigMap switchyard-routes (k8s/switchyard-routes.toml).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: switchyard, namespace: ea-aigw}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: switchyard}}
+  template:
+    metadata: {labels: {app: switchyard}}
+    spec:
+      initContainers:
+      - name: build
+        image: rust:1-bookworm
+        command: ["sh", "-c", "[ -x /opt/sy/bin/switchyard-server ] || cargo install --locked switchyard-server --root /opt/sy"]
+        env: [{name: CARGO_HOME, value: /opt/cargo}]
+        resources: {requests: {cpu: "1", memory: 2Gi}, limits: {cpu: "4", memory: 6Gi}}
+        volumeMounts: [{name: bin, mountPath: /opt/sy}, {name: cargo, mountPath: /opt/cargo}]
+      containers:
+      - name: switchyard
+        image: rust:1-bookworm            # has ca-certificates (the slim image does not, and the server needs TLS for provider calls)
+        command: ["/opt/sy/bin/switchyard-server", "--host", "0.0.0.0", "--config", "/etc/switchyard/routes.toml"]
+        env: [{name: GATEWAY_KEY, valueFrom: {secretKeyRef: {name: a2a-agent-key, key: key}}}]
+        ports: [{containerPort: 4000}]
+        readinessProbe: {tcpSocket: {port: 4000}, initialDelaySeconds: 5, periodSeconds: 5}
+        resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 512Mi}}
+        volumeMounts: [{name: bin, mountPath: /opt/sy, readOnly: true}, {name: routes, mountPath: /etc/switchyard}]
+      volumes:
+      - {name: bin, emptyDir: {}}
+      - {name: cargo, emptyDir: {}}
+      - {name: routes, configMap: {name: switchyard-routes}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: switchyard, namespace: ea-aigw}
+spec: {selector: {app: switchyard}, ports: [{name: http, port: 4000}]}

@@ -19,8 +19,8 @@ jobs:
       - uses: kong/setup-kongctl@v1
       - name: Guard - only kong-team-example-gateway
         run: |
-          grep -rh "^  name: kong-team-example-gateway" kong/00-gateway.yaml
-          [ "$(grep -rhc 'ai_gateways:' kong | paste -sd+ | bc)" = "1" ]
+          grep -q '^  name: kong-team-example-gateway$' kong/00-gateway.yaml
+          [ "$(grep -rl '^ai_gateways:' kong | wc -l)" = "1" ]   # exactly one gateway declared
       - name: Plan (apply mode: never deletes)
         run: |
           export OPENAI_BEARER="Bearer ${OPENAI_KEY}" REDIS_PASSWORD_CLEAN="${REDIS_PASSWORD}"
