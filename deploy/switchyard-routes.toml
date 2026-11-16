@@ -1,23 +1,40 @@
-# Switchyard routes for the EA POC: a weighted random split between the two targets Kong has approved (fast / strong).
-# The decision service only names a target; Kong resolves it to its own AI Model entity and never accepts a URL from the response.
+# Switchyard routes for the EA POC. Switchyard only NAMES a target (fast | strong); Kong resolves it to its own AI Model entity and never accepts a URL.
+# Target ids = the AI Model entity names on the gateway (the policy drift-checks against them).
 schema_version = 1
 
+# Every model call Switchyard makes itself (the judge) goes back THROUGH the gateway, so it is governed, metered and shows up in the dashboards.
+# /route hosts ea-route-fast and ea-route-strong, which carry no routing policy (no recursion).
 [llm_clients.gateway]
 format = "anthropic_messages"
-base_url = "http://aigw-dp.ea-aigw.svc.cluster.local/agents"
+base_url = "http://aigw-dp.ea-aigw.svc.cluster.local/route"
 api_key_env = "GATEWAY_KEY"
+timeout_ms = 20000          # bounds the judge; on timeout the route fails open to strong_target
+max_retries = 1
 
 [targets.fast]
-id = "ea-route-fast"     # = the AI Model entity name; the policy resolves and drift-checks against it
+id = "ea-route-fast"        # Claude Haiku
 llm_client = "gateway"
 
 [targets.strong]
-id = "ea-route-strong"
+id = "ea-route-strong"      # Claude Sonnet on Bedrock
 llm_client = "gateway"
 
+# Simple weighted split (kept for comparison / smoke tests).
 [routes.general]
 id = "switchyard/general"
 type = "random"
 targets = ["fast", "strong"]
 weights = [1, 1]
 seed = 7
+
+# Content-aware: a judge (Haiku, via the gateway) estimates p(solve) = the chance the cheap model completes the task.
+# p_solve >= threshold -> fast (weak_target); otherwise -> strong. Unusable verdict / judge failure -> strong (fail open to quality).
+[routes.smart]
+id = "switchyard/smart"
+type = "llm_classifier"
+mode = "capability"
+classifier_target = "fast"
+weak_target = "fast"
+strong_target = "strong"
+base_threshold = 0.5        # raise to send more traffic to strong
+threshold_step = 0.1        # extra bar when the judge is unsure / the task is outside the capability card

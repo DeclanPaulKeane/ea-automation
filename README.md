@@ -20,6 +20,9 @@ kong/70-routing-provider.yaml  AI Routing Provider (NVIDIA Switchyard) + entry m
 deploy/                    Switchyard decision service manifest + routes (compiled in-cluster from crates.io; see docs)
 ```
 
+## NVIDIA Switchyard routing example
+`examples/nvidia-routing-example.md` is a worked example (easy prompts to Haiku, hard prompts to Sonnet, with real results, cost comparison and a fail-open test); `examples/routing-demo.py` reruns it. Config: `kong/70-routing-provider.yaml` and `deploy/switchyard-routes.toml`.
+
 ## Add a model (the demo)
 ```bash
 scripts/new-model.sh ea-claude-sonnet /sonnet kong-se-anthropic claude-sonnet-5-5 anthropic
