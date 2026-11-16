@@ -1,0 +1,40 @@
+# DeepWiki MCP (public, no upstream auth) behind the gateway, protected by the shared Okta `oidc` strategy (Claude Integration App, default auth server).
+# Callers must present a valid Okta access token; Kong validates it (JWT, Okta JWKS) and serves its own RFC 9728 protected-resource document so MCP clients
+# know to log in to Okta. The Okta token is NOT forwarded to DeepWiki (public upstream, forward_client_headers: false).
+# The `oidc` strategy is referenced by name; it already exists on the gateway (see docs/05-mcp.md, "Okta OIDC").
+_defaults:
+  kongctl:
+    namespace: ea-automation
+
+ai_gateway_mcp_servers:
+- ref: deepwiki
+  ai_gateway: ea-gw
+  name: deepwiki
+  display_name: "DeepWiki MCP (public, via gateway + Okta OIDC)"
+  type: passthrough-listener
+  enabled: true
+  policies: []
+  config:
+    url: https://mcp.deepwiki.com/mcp
+    route:
+      paths: [/deepwiki]                         # keep in step with access.metadata.endpoint below
+      strip_path: true
+      protocols: [http, https]
+      https_redirect_status_code: 426
+      preserve_host: false
+      regex_priority: 0
+      request_buffering: true
+      response_buffering: true
+      headers: {}
+    server: {forward_client_headers: false, timeout: 60000}
+    max_request_body_size: 8388608
+    logging: {audits: false, payloads: false}
+  access:
+    auth_strategies: [oidc]
+    acl_attribute_type: oauth_access_token
+    access_token_claim_field: .sub               # Okta user id from the JWT
+    metadata:
+      resource: !env DEEPWIKI_PUBLIC_MCP_URL     # must equal the exact URL the client dials
+      authorization_servers: [https://integrator-1741022.okta.com/oauth2/default]
+      endpoint: /.well-known/oauth-protected-resource/deepwiki
+      scopes_supported: [openid, profile, email]
