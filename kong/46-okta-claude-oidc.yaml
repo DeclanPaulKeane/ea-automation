@@ -1,0 +1,24 @@
+# Dedicated OIDC strategy for MCP servers authenticated with Okta's Claude Integration App (public client, auth code + PKCE) on the default authorization server.
+# JWT access tokens, verified with Okta's published keys. Separate from the shared `oidc` strategy so MCP auth can evolve without touching the Sonnet route.
+_defaults:
+  kongctl:
+    namespace: ea-automation
+
+ai_gateway_auth_strategies:
+- ref: okta-claude-oidc
+  ai_gateway: ea-gw
+  name: okta-claude-oidc
+  display_name: "Okta OIDC (Claude Integration App) for MCP"
+  type: openid-connect
+  config:
+    issuer: https://integrator-1741022.okta.com/oauth2/default/.well-known/openid-configuration
+    client_id: [!env OKTA_CLIENT_ID]               # Claude Integration App
+    auth_methods: [bearer]                         # MCP routes validate bearer tokens only
+    audience_claim: [aud]
+    audience_required: [default]                   # the default authorization server's audience in this org (verified via the Okta API; NOT api://default)
+    consumer_optional: true                        # any valid Okta user, no Konnect consumer mapping
+    consumer_groups_optional: true
+    cache_tokens_salt: !env OIDC_CACHE_SALT
+    hide_credentials: false                        # the Token Vault reads the caller's subject token from the request (it overrides this to false anyway; stating it clears warning AG* on the vault route)
+    ssl_verify: true
+    leeway: 30

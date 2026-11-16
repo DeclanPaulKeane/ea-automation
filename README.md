@@ -8,6 +8,8 @@ kong/00-gateway.yaml       the gateway (already exists; adopted into the namespa
 kong/10-providers.yaml     OpenAI, Azure OpenAI, Bedrock providers (credentials come from the environment, never from git)
 kong/20-policies.yaml      global OTEL + Prometheus + correlation-id
 kong/30-mcp.yaml           Atlassian (Jira/Confluence) MCP, OIDC introspection
+kong/46-okta-claude-oidc.yaml  Okta OIDC strategy (Claude Integration App) used by the github-token-vault MCP server
+kong/46-okta-claude-oidc.yaml  Okta OIDC strategy (Claude Integration App) used by the github-token-vault MCP server
 kong/45-mcp-deepwiki.yaml   DeepWiki MCP (public) protected by the Okta `oidc` strategy, caller token not forwarded
 kong/35-mcp-github.yaml    GitHub MCP, OAuth passthrough (opaque tokens cannot pass an OIDC strategy on 2.3; GitHub validates upstream)
 kong/40-agents.yaml        triage-agent <-> release-agent (A2A)
