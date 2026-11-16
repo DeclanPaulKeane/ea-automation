@@ -65,14 +65,41 @@ restored                     | HTTP 200 | X-AI-Routing-Backend: strong | X-AI-Ro
 If Switchyard is down, slow or returns something unusable, traffic is still served by the configured `default_target` (here **fast**; choose **strong** if quality matters more than cost) and the outcome header says `fallback`.
 *A first attempt to simulate the outage by changing the Kubernetes Service selector did not work: Kong keeps a keep-alive connection to the Switchyard pod, which a selector change does not cut.*
 
-## Run it yourself
+## Run it yourself: two curls
+Same URL, same `"model": "ea-claude-route"`; only the prompt changes. `KEY` is the gateway consumer key (`KONG_API_KEY_TEST` in `secrets.yaml`).
 ```bash
-cd customers/ea-poc && . scripts/env.sh
-python3 scripts/routing-demo.py --md /tmp/table.md --json /tmp/results.json   # 10 prompts, prints routing + a cost summary
-# one by one, watching the headers:
-curl -si https://ea-aigw.kong-sales-engineering.com/route/v1/messages -H "x-api-key: $KONG_API_KEY_TEST" -H 'content-type: application/json' -H 'anthropic-version: 2023-06-01' \
-  -d '{"model":"ea-claude-route","max_tokens":60,"messages":[{"role":"user","content":"What is the capital of France?"}]}' | grep -i x-ai-routing
+KEY=$(. scripts/env.sh; echo "$KONG_API_KEY_TEST")     # from customers/ea-poc; or paste your key
 ```
+**Easy prompt, expect `fast` (Haiku):**
+```bash
+curl -si https://ea-aigw.kong-sales-engineering.com/route/v1/messages \
+  -H "x-api-key: $KEY" -H 'content-type: application/json' -H 'anthropic-version: 2023-06-01' \
+  -d '{"model":"ea-claude-route","max_tokens":100,"messages":[{"role":"user","content":"What is the capital of France?"}]}' \
+  | grep -iE '^HTTP|^x-ai-routing|"model"' | sed -E 's/.*("model":"[^"]*").*/\1/'
+```
+```
+HTTP/2 200
+x-ai-routing-backend: fast
+x-ai-routing-outcome: enforced
+"model":"claude-haiku-4-5-20251001"
+```
+**Hard prompt, expect `strong` (Sonnet on Bedrock):**
+```bash
+curl -si https://ea-aigw.kong-sales-engineering.com/route/v1/messages \
+  -H "x-api-key: $KEY" -H 'content-type: application/json' -H 'anthropic-version: 2023-06-01' \
+  -d '{"model":"ea-claude-route","max_tokens":100,"messages":[{"role":"user","content":"Design a multi-region active-active architecture for a game matchmaking service handling 2M concurrent players. Cover consistency, failover, data residency and a migration plan with rollback criteria."}]}' \
+  | grep -iE '^HTTP|^x-ai-routing|"model"' | sed -E 's/.*("model":"[^"]*").*/\1/'
+```
+```
+HTTP/2 200
+x-ai-routing-backend: strong
+x-ai-routing-outcome: enforced
+"model":"claude-sonnet-5-5"
+```
+(Those two outputs are real, captured from the live gateway.) To read the answer itself, drop the `grep`/`sed` and pipe through `jq -r '.content[0].text'` (use `curl -s` instead of `-si`, and add `-D -` if you also want the headers). The judge is a model, so a borderline prompt can route differently between runs.
+
+Optional, if you ever want all ten prompts and the cost comparison at once: `python3 scripts/routing-demo.py`.
+
 Useful knobs, all in `kong/70-routing-provider.yaml` unless noted: `mode: observe_only` (decisions only, outcome `observed`, nothing rerouted: the safe way to trial it on live traffic), `default_target`, and in `k8s/switchyard-routes.toml` `base_threshold` / `threshold_step`. After editing the TOML: `kubectl -n ea-aigw create configmap switchyard-routes --from-file=routes.toml=k8s/switchyard-routes.toml --dry-run=client -o yaml | kubectl apply -f -`, wait about a minute, then `kubectl -n ea-aigw exec deploy/switchyard -c switchyard -- sh -c 'kill 1'` (restarts the container, keeps the compiled binary).
 
 ## Other Switchyard route types you could show next
