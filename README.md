@@ -8,7 +8,7 @@ kong/00-gateway.yaml       the gateway (already exists; adopted into the namespa
 kong/10-providers.yaml     OpenAI, Azure OpenAI, Bedrock providers (credentials come from the environment, never from git)
 kong/20-policies.yaml      global OTEL + Prometheus + correlation-id
 kong/30-mcp.yaml           Atlassian (Jira/Confluence) MCP, OIDC introspection
-kong/35-mcp-github.yaml    GitHub MCP, OIDC introspection via an in-cluster adapter (deploy/github-introspect-*)
+kong/35-mcp-github.yaml    GitHub MCP, OAuth passthrough (opaque tokens cannot pass an OIDC strategy on 2.3; GitHub validates upstream)
 kong/40-agents.yaml        triage-agent <-> release-agent (A2A)
 kong/50-policy-rag.yaml    RAG injector policy
 kong/60-custom-policy.yaml custom policy (ea-stamp) + Lua in kong/lua/
@@ -34,7 +34,7 @@ curl https://ea-aigw.kong-sales-engineering.com/sonnet/v1/messages -H "x-api-key
 | `/custom` | `ea-claude-custom` | custom policy: response carries `X-EA-Policy: stamped-by-ea-gateway` |
 | `/route` | `ea-claude-route` | AI Routing Provider: `X-AI-Routing-Backend: fast\|strong` and `X-AI-Routing-Outcome: enforced`; strong is served by Sonnet on Bedrock, fast by Haiku |
 | `/a2a/triage` | (A2A JSON-RPC `message/send`) | triage-agent calls release-agent through the gateway |
-| `/atlassian` `/github` | (MCP client, e.g. Insomnia) | OAuth login in the client; Kong validates the token with an OIDC strategy and forwards it |
+| `/atlassian` `/github` | (MCP client, e.g. Insomnia) | OAuth login in the client; Atlassian: Kong validates with an OIDC strategy. GitHub: passthrough, GitHub validates. Token forwarded either way |
 
 ```bash
 # routing: run it a few times and watch the backend header flip between fast and strong
@@ -51,7 +51,7 @@ Rules the gateway enforces: one **distinct path** per model (overlapping paths r
 set -a; . /path/to/secrets.yaml; set +a
 export KONGCTL_DEFAULT_KONNECT_PAT=$EA_PAT OPENAI_BEARER="Bearer $OPENAI_KEY" REDIS_PASSWORD_CLEAN=${REDIS_PASSWORD//\"/} \
   ATLASSIAN_CACHE_SALT=ea-poc-atlassian-cache-v1 INTROSPECT_CLIENT_SECRET=unused \
-  ATLASSIAN_PUBLIC_MCP_URL=https://ea-aigw.kong-sales-engineering.com/atlassian GITHUB_PUBLIC_MCP_URL=https://ea-aigw.kong-sales-engineering.com/github
+  ATLASSIAN_PUBLIC_MCP_URL=https://ea-aigw.kong-sales-engineering.com/atlassian
 kongctl plan -f kong --recursive --mode apply     # review
 kongctl apply -f kong --recursive --auto-approve
 ```

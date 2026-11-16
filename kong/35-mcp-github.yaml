@@ -1,44 +1,59 @@
-# GitHub MCP (api.githubcopilot.com/mcp) behind the gateway, same pattern as Atlassian: the MCP client does the OAuth dance (here against the
-# registered GitHub OAuth app "Konnect Github MCP"), Kong validates every token with the openid-connect auth strategy and forwards it upstream.
-# GitHub tokens are opaque and GitHub has no RFC 7662 endpoint, so introspection goes to the in-cluster adapter (services/github-introspect).
+# GitHub MCP (api.githubcopilot.com/mcp) behind the gateway as an OAuth PASSTHROUGH (same pattern as the Expeditors gateway).
+# The MCP client (Insomnia) logs in to GitHub with the registered OAuth app "Konnect Github MCP" and sends the GitHub token; Kong forwards it
+# and GitHub validates it upstream. Kong serves its OWN RFC 9728 protected-resource document and rewrites the upstream's 401 challenge so it
+# points at Kong, which is what lets the client start OAuth against the gateway URL.
+#
+# Why not an OIDC auth strategy like Atlassian? On the 2.3 data plane an MCP route's bearer check is JWT signature verification only
+# (introspection is never used and extra auth_methods are overridden to [bearer], warning AG103). GitHub OAuth tokens are opaque (gho_...), so
+# they cannot pass. Atlassian tokens are JWTs, so Atlassian works with an OIDC strategy. Details: docs/05-mcp.md.
 _defaults:
   kongctl:
     namespace: ea-automation
 
-ai_gateway_auth_strategies:
-- ref: github-oauth
+ai_gateway_policies:
+- ref: github-mcp-oauth-metadata
   ai_gateway: ea-gw
-  name: github-oauth
-  display_name: "GitHub OAuth (introspection via adapter)"
-  type: openid-connect
+  name: github-mcp-oauth-metadata
+  display_name: "GitHub MCP: Kong-hosted RFC 9728 metadata and challenge rewrite"
+  type: pre-function
+  enabled: true
+  global: false
   config:
-    introspection_endpoint: http://github-introspect.ea-aigw.svc.cluster.local/introspect
-    cache_introspection: true
-    client_id: [!env GITHUB_CLIENT_ID]               # the OAuth app's public id; the plugin needs a client identity to introspect
-    client_secret: [!secret {source: !env INTROSPECT_CLIENT_SECRET}]   # ignored by the adapter (it authenticates to GitHub with the real secret itself)
-    introspection_endpoint_auth_method: client_secret_post
-    issuer: http://github-introspect.ea-aigw.svc.cluster.local/.well-known/openid-configuration
-    auth_methods: [bearer]
-    hide_credentials: false          # the GitHub upstream must still receive the token
-    consumer_optional: true
-    consumer_groups_optional: true
-    scopes: []
-    cache_tokens_salt: !env ATLASSIAN_CACHE_SALT
-    ssl_verify: true
-    leeway: 30
+    access:
+    - |
+      local path = kong.request.get_path()
+      if path:find("/.well-known/oauth-protected-resource", 1, true) == 1 then
+        local base = "https://" .. (kong.request.get_forwarded_host() or kong.request.get_host())
+        return kong.response.exit(200, {
+          resource = base .. "/github",
+          authorization_servers = { "https://github.com/login/oauth" },
+          scopes_supported = { "repo", "read:org", "read:user", "user:email" },
+          bearer_methods_supported = { "header" },
+          resource_name = "GitHub MCP via Kong (EA POC)",
+        }, { ["Cache-Control"] = "no-cache" })
+      end
+    header_filter:
+    - |
+      local h = kong.response.get_header("WWW-Authenticate")
+      if h then
+        local base = "https://" .. (kong.request.get_forwarded_host() or kong.request.get_host())
+        kong.response.set_header("WWW-Authenticate",
+          (h:gsub('resource_metadata="[^"]*"', 'resource_metadata="' .. base .. '/.well-known/oauth-protected-resource/github"')))
+      end
 
 ai_gateway_mcp_servers:
 - ref: github
   ai_gateway: ea-gw
   name: github
-  display_name: "GitHub MCP"
+  display_name: "GitHub MCP (OAuth passthrough)"
   type: passthrough-listener
   enabled: true
-  policies: []
+  policies: [github-mcp-oauth-metadata]
+  access: {acl_attribute_type: consumer}
   config:
     url: https://api.githubcopilot.com/mcp/
     route:
-      paths: [/github]                             # keep in step with access.metadata.endpoint below
+      paths: [/github, /.well-known/oauth-protected-resource/github]
       strip_path: true
       protocols: [http, https]
       https_redirect_status_code: 426
@@ -50,12 +65,3 @@ ai_gateway_mcp_servers:
     server: {forward_client_headers: true, timeout: 30000}
     max_request_body_size: 8388608
     logging: {audits: false, payloads: false}
-  access:
-    auth_strategies: [github-oauth]
-    acl_attribute_type: oauth_access_token
-    access_token_claim_field: .username            # GitHub login from the introspection response
-    metadata:
-      resource: !env GITHUB_PUBLIC_MCP_URL
-      authorization_servers: [https://github.com/login/oauth]
-      endpoint: /.well-known/oauth-protected-resource/github
-      scopes_supported: [repo, read:org, read:user, user:email]
